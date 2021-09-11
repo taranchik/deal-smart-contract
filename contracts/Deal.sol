@@ -166,5 +166,5 @@ contract Deal {
         arbitrator = msg.sender;
                     
         complains[complaintIndex].arbitratorComment = comment;
-        complains[complaintIndex].isResolved = true;s
+        complains[complaintIndex].isResolved = true;
 }
