@@ -8,7 +8,7 @@ contract Deal {
     address private arbitrator;
     mapping(uint => Complaint) private complains;
     mapping(uint => Invoice) private invoices;
-    mapping(string => Product) private products;
+    mapping(string => Product) public products;
     mapping(string => ERC20Token) private ERC20Tokens;
     uint private complainsCount = 0;
     uint private invoicesCount = 0;
