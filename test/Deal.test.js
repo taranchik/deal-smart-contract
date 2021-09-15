@@ -381,7 +381,54 @@ contract("Deal", function (accounts) {
     });
   });
 
-  describe("Testing of unpossible functionality", () => {});
+  describe("Testing of unpossible functionality", () => {
+    describe("Buy product testing", () => {
+      it("buyer tries to buy a non-existent product", async () => {
+        // setup
+        let beforeInvoicesCount, afterInvoicesCount;
+        let key = "Snowboard";
+
+        // exercise
+        beforeInvoicesCount = await instance.invoicesCount();
+        try {
+          await instance.buyProduct(key, { from: buyer });
+        } catch (error) {
+          // verify
+          assert(
+            error.reason,
+            "Purchase of a non-existent product is not possible"
+          );
+        }
+        afterInvoicesCount = await instance.invoicesCount();
+
+        // verify
+        assert(
+          beforeInvoicesCount.toNumber() === afterInvoicesCount.toNumber()
+        );
+      });
+
+      it("seller tries to buy his own product", async () => {
+        // setup
+        let beforeInvoicesCount, afterInvoicesCount;
+        let key = "Skateboard";
+
+        // exercise
+        beforeInvoicesCount = await instance.invoicesCount();
+        try {
+          await instance.buyProduct(key, { from: seller });
+        } catch (error) {
+          // verify
+          assert(error.reason, "The product owner can't buy his own product");
+        }
+        afterInvoicesCount = await instance.invoicesCount();
+
+        // verify
+        assert(
+          beforeInvoicesCount.toNumber() === afterInvoicesCount.toNumber()
+        );
+      });
+    });
+  });
   // await Deal.deployed();
   // return assert.isTrue(true);
 });
