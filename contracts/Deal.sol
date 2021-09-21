@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.7.0;
+pragma solidity ^0.8.7;
 pragma abicoder v2;
 
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v3.4.0-solc-0.7/contracts/token/ERC20/ERC20.sol";
+import "./ERC20Tkn.sol";
 import "./MultiSigWallet.sol";
 
 contract Deal {
@@ -20,56 +20,56 @@ contract Deal {
         multiSigWallet = new MultiSigWallet(_owners, 2);
 
         ERC20Tokens["USDC"] = ERC20Token({
-            token: ERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48),
-            tokenOwner: 0x95Ba4cF87D6723ad9C0Db21737D862bE80e93911
+            token: new ERC20Tkn("USDC", "USD coin"),
+            isMinted: false
         });
         ERC20Tokens["DAI"] = ERC20Token({
-            token: ERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F),
-            tokenOwner: 0xdDb108893104dE4E1C6d0E47c42237dB4E617ACc
+            token: new ERC20Tkn("DAI", "Dai"),
+            isMinted: false
         });
         ERC20Tokens["LINK"] = ERC20Token({
-            token: ERC20(0x514910771AF9Ca656af840dff83E8264EcF986CA),
-            tokenOwner: 0xf55037738604FDDFC4043D12F25124E94D7D1780
+            token: new ERC20Tkn("LINK", "Chainlink"),
+            isMinted: false
         });
-        ERC20Tokens["NULL"] = ERC20Token({
-            token: ERC20(address(0)),
-            tokenOwner: address(0)
+        ERC20Tokens["ETH"] = ERC20Token({
+            token: new ERC20Tkn("ETH", "Ethereum"),
+            isMinted: false
         });
 
         products["Bike"] = Product({
             price: 1,
-            token: ERC20Tokens["USDC"],
+            token: ERC20Tokens["USDC"].token,
             isBroken: false,
             productOwner: msg.sender
         });
         products["Car"] = Product({
             price: 5,
-            token: ERC20Tokens["DAI"],
+            token: ERC20Tokens["DAI"].token,
             isBroken: true,
             productOwner: msg.sender
         });
         products["Rollers"] = Product({
             price: 2,
-            token: ERC20Tokens["LINK"],
+            token: ERC20Tokens["LINK"].token,
             isBroken: false,
             productOwner: msg.sender
         });
         products["Skateboard"] = Product({
             price: 2 ether,
-            token: ERC20Tokens["NULL"],
+            token: ERC20Tokens["ETH"].token,
             isBroken: false,
             productOwner: msg.sender
         });
     }
 
     struct ERC20Token {
-        ERC20 token;
-        address tokenOwner;
+        ERC20Tkn token;
+        bool isMinted;
     }
 
     struct Product {
         uint256 price;
-        ERC20Token token;
+        ERC20Tkn token;
         bool isBroken;
         address productOwner;
     }
@@ -117,20 +117,19 @@ contract Deal {
         );
     }
 
-    //   ["0x5B38Da6a701c568545dCfcB03FcB875f56beddC4","0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2","0xCA35b7d915458EF540aDe6068dFe2F44E8fa733c"]
     function getProductInfo(string memory name)
         public
         view
         returns (
             uint256,
-            ERC20Token memory,
+            string memory,
             bool,
             address
         )
     {
         return (
             products[name].price,
-            products[name].token,
+            products[name].token.name(),
             products[name].isBroken,
             products[name].productOwner
         );
@@ -184,7 +183,12 @@ contract Deal {
             isConfirmed: false
         });
 
-        if (products[productName].token.tokenOwner == address(0)) {
+        string memory symbol = products[productName].token.symbol();
+
+        if (
+            keccak256(abi.encodePacked(symbol)) ==
+            keccak256(abi.encodePacked("ETH"))
+        ) {
             require(
                 products[productName].price == msg.value,
                 "The paid amount of Ether is different than the price of the product"
@@ -202,21 +206,46 @@ contract Deal {
             invoicesCount++;
         } else {
             require(
-                products[productName].token.token.balanceOf(msg.sender) >=
-                    products[productName].price,
-                "There are enough ERC20 tokens to cover the cost of the product"
+                !ERC20Tokens[symbol].isMinted,
+                "ERC20 Token for this product has been already minted"
             );
 
-            products[productName].productOwner = msg.sender;
-            products[productName].token.token.approve(
-                invoices[invoicesCount].buyer,
+            require(
+                products[productName].price * 1 ether == msg.value,
+                "To make a deposit for the product, you need to pay the price of tokens in the Ether, where the rate is 1 to 1"
+            );
+
+            multiSigWallet.submitTransaction(
+                msg.sender,
+                invoices[invoicesCount].seller,
+                invoices[invoicesCount].price
+            ); // submit transfer eather from buyer to seller
+            multiSigWallet.confirmTransaction(
+                msg.sender,
+                invoices[invoicesCount].transactionIndex
+            );
+            invoicesCount++;
+
+            ERC20Tokens[symbol].token.mint(
+                address(this),
                 products[productName].price
             );
-            products[productName].token.token.transferFrom(
-                invoices[invoicesCount].buyer,
-                invoices[invoicesCount].seller,
-                products[productName].price
-            ); // transfer eather from buyer to seller
+            ERC20Tokens[symbol].isMinted = true;
+        }
+    }
+
+    function executeTransfer(Product storage product, address payable recipient)
+        private
+    {
+        string memory symbol = product.token.symbol();
+
+        if (
+            keccak256(abi.encodePacked(symbol)) ==
+            keccak256(abi.encodePacked("ETH"))
+        ) {
+            recipient.transfer(product.price); // transfer eather from smart contract to the seller
+        } else {
+            product.token.transfer(recipient, product.price); // transfer tokens from smart contract to the seller
         }
     }
 
@@ -244,11 +273,15 @@ contract Deal {
             "The transaction is not confirmed by at least two persons yet"
         );
 
+        executeTransfer(
+            products[invoices[invoiceIndex].productName],
+            invoices[invoiceIndex].seller
+        );
+
         invoices[invoiceIndex].isConfirmed = true;
         products[invoices[invoiceIndex].productName].productOwner = invoices[
             invoiceIndex
         ].buyer;
-        invoices[invoiceIndex].seller.transfer(invoices[invoiceIndex].price); // transfer eather from smart contract to the seller
     }
 
     function makeComplaint(uint256 invoiceIndex, string memory comment) public {
@@ -310,7 +343,7 @@ contract Deal {
 
         arbitrator = msg.sender;
 
-        Invoice memory invoice = complains[complaintIndex].invoice;
+        Invoice storage invoice = complains[complaintIndex].invoice;
 
         if (acceptPayment) {
             multiSigWallet.confirmTransaction(
@@ -321,9 +354,9 @@ contract Deal {
                 msg.sender,
                 complains[complaintIndex].invoice.transactionIndex
             );
-            invoice.seller.transfer(invoice.price); // transfer eather from smart contract to the seller
+            executeTransfer(products[invoice.productName], invoice.seller); // transfer eather from smart contract to the seller
         } else {
-            invoice.buyer.transfer(invoice.price); // transfer eather from smart contract to the buyer
+            executeTransfer(products[invoice.productName], invoice.buyer); // transfer eather from smart contract to the buyer
         }
 
         complains[complaintIndex].arbitratorComment = comment;
