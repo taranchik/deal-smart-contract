@@ -11,12 +11,17 @@ contract Deal {
     address private arbitrator;
     mapping(uint256 => Complaint) private complains;
     mapping(uint256 => Invoice) private invoices;
-    mapping(string => Product) private products;
+    mapping(string => Product) public products;
     mapping(string => ERC20Token) private ERC20Tokens;
     uint256 private complainsCount = 0;
-    uint256 private invoicesCount = 0;
+    uint256 public invoicesCount = 0;
 
     constructor(address[] memory _owners) {
+        require(
+            _owners.length == 3,
+            "Contract accepts only 3 owners for the Multisig wallet"
+        );
+
         multiSigWallet = new MultiSigWallet(_owners, 2);
 
         ERC20Tokens["USDC"] = ERC20Token({
@@ -176,7 +181,7 @@ contract Deal {
         );
 
         invoices[invoicesCount] = Invoice({
-            buyer: msg.sender,
+            buyer: payable(msg.sender),
             seller: payable(products[productName].productOwner),
             productName: productName,
             price: products[productName].price,

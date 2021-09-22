@@ -1,3 +1,6 @@
+const Web3 = require("web3");
+const web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"));
+
 console.log("running Deal.test.js");
 
 const Deal = artifacts.require("Deal");
@@ -25,27 +28,23 @@ contract("Deal", function (accounts) {
   describe("Testing of possible functionality", () => {
     it("buyer should buy a product with Ether", async () => {
       // setup
-      let beforeProductOwner, afterProductOwner, productPrice;
+      let beforeInvoicesCount, afterInvoicesCount, productPrice;
       let key = "Skateboard";
 
       // exercise
-      beforeProductOwner = await instance
-        .products(key)
-        .then((result) => result.productOwner);
+      beforeInvoicesCount = await instance.invoicesCount();
       productPrice = await instance
         .products(key)
-        .then((result) => result.price.toNumber());
+        .then((result) => result.price.toString());
       await instance.buyProduct(key, {
         from: buyer,
-        gas: 200000,
+        gas: 300000,
         value: productPrice,
       });
-      afterProductOwner = await instance
-        .products(key)
-        .then((result) => result.productOwner);
+      afterInvoicesCount = await instance.invoicesCount();
 
       // verify
-      assert(beforeProductOwner !== afterProductOwner);
+      assert(beforeInvoicesCount.toNumber() < afterInvoicesCount.toNumber());
     });
 
     it("buyer should make a complaint on a product", async () => {
