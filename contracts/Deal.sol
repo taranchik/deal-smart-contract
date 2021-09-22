@@ -3,7 +3,7 @@
 pragma solidity ^0.8.7;
 pragma abicoder v2;
 
-import "./ERC20Tkn.sol";
+import "./CustomERC20.sol";
 import "./MultiSigWallet.sol";
 
 contract Deal {
@@ -20,19 +20,19 @@ contract Deal {
         multiSigWallet = new MultiSigWallet(_owners, 2);
 
         ERC20Tokens["USDC"] = ERC20Token({
-            token: new ERC20Tkn("USDC", "USD coin"),
+            token: new CustomERC20("USDC", "USD coin"),
             isMinted: false
         });
         ERC20Tokens["DAI"] = ERC20Token({
-            token: new ERC20Tkn("DAI", "Dai"),
+            token: new CustomERC20("DAI", "Dai"),
             isMinted: false
         });
         ERC20Tokens["LINK"] = ERC20Token({
-            token: new ERC20Tkn("LINK", "Chainlink"),
+            token: new CustomERC20("LINK", "Chainlink"),
             isMinted: false
         });
         ERC20Tokens["ETH"] = ERC20Token({
-            token: new ERC20Tkn("ETH", "Ethereum"),
+            token: new CustomERC20("ETH", "Ethereum"),
             isMinted: false
         });
 
@@ -63,13 +63,13 @@ contract Deal {
     }
 
     struct ERC20Token {
-        ERC20Tkn token;
+        CustomERC20 token;
         bool isMinted;
     }
 
     struct Product {
         uint256 price;
-        ERC20Tkn token;
+        CustomERC20 token;
         bool isBroken;
         address productOwner;
     }
@@ -91,6 +91,8 @@ contract Deal {
         string arbitratorComment;
         bool isResolved;
     }
+
+    event ApproveTransaction(address payable recipient, uint256 amount);
 
     function getInvoiceInfo(uint256 invoiceIndex)
         public
@@ -234,9 +236,10 @@ contract Deal {
         }
     }
 
-    function executeTransfer(Product storage product, address payable recipient)
-        private
-    {
+    function approveTransaction(
+        Product storage product,
+        address payable recipient
+    ) private {
         string memory symbol = product.token.symbol();
 
         if (
@@ -247,6 +250,8 @@ contract Deal {
         } else {
             product.token.transfer(recipient, product.price); // transfer tokens from smart contract to the seller
         }
+
+        emit ApproveTransaction(recipient, product.price);
     }
 
     function confirmProductSale(uint256 invoiceIndex) public {
@@ -273,7 +278,7 @@ contract Deal {
             "The transaction is not confirmed by at least two persons yet"
         );
 
-        executeTransfer(
+        approveTransaction(
             products[invoices[invoiceIndex].productName],
             invoices[invoiceIndex].seller
         );
@@ -354,9 +359,9 @@ contract Deal {
                 msg.sender,
                 complains[complaintIndex].invoice.transactionIndex
             );
-            executeTransfer(products[invoice.productName], invoice.seller); // transfer eather from smart contract to the seller
+            approveTransaction(products[invoice.productName], invoice.seller); // transfer eather from smart contract to the seller
         } else {
-            executeTransfer(products[invoice.productName], invoice.buyer); // transfer eather from smart contract to the buyer
+            approveTransaction(products[invoice.productName], invoice.buyer); // transfer eather from smart contract to the buyer
         }
 
         complains[complaintIndex].arbitratorComment = comment;
