@@ -19,6 +19,15 @@ contract CustomERC20 is ERC20 {
         );
     }
 
+    function transferFromERC20(
+        address spender,
+        address recepient,
+        uint256 amount
+    ) external {
+        _approve(spender, recepient, amount);
+        transferFrom(spender, recepient, amount);
+    }
+
     function mint(address recepient, uint256 amount) external {
         _mint(recepient, amount);
     }

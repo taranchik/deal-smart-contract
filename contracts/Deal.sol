@@ -19,8 +19,10 @@ contract Deal {
     constructor(address[] memory _owners) {
         require(
             _owners.length == 3,
-            "Contract accepts only 3 owners for the Multisig wallet"
+            "Smart contract accepts only 3 owners for the Multisig wallet"
         );
+
+        arbitrator = _owners[2];
 
         multiSigWallet = new MultiSigWallet(_owners, 2);
 
@@ -110,11 +112,6 @@ contract Deal {
             uint256
         )
     {
-        require(
-            invoiceIndex < invoicesCount,
-            "There is no invoice for this index"
-        );
-
         return (
             invoices[invoiceIndex].buyer,
             invoices[invoiceIndex].seller,
@@ -153,11 +150,6 @@ contract Deal {
             bool
         )
     {
-        require(
-            complaintIndex < complainsCount,
-            "There is no complaint for this index"
-        );
-
         return (
             complains[complaintIndex].invoice,
             complains[complaintIndex].buyerComment,
@@ -168,16 +160,16 @@ contract Deal {
     }
 
     function buyProduct(string memory productName) public payable {
+        require(arbitrator != msg.sender, "Arbitrator can not buy a product");
+
         require(
             products[productName].price != 0,
             "Purchase of a non-existent product is not possible"
         );
 
-        require(arbitrator != msg.sender, "The arbitrator can't buy a product");
-
         require(
             products[productName].productOwner != msg.sender,
-            "The product owner can't buy his own product"
+            "Product owner can not buy his own product"
         );
 
         invoices[invoicesCount] = Invoice({
@@ -212,15 +204,40 @@ contract Deal {
             );
             invoicesCount++;
         } else {
-            require(
-                !ERC20Tokens[symbol].isMinted,
-                "ERC20 Token for this product has been already minted"
-            );
+            if (
+                products[productName].token.balanceOf(msg.sender) <=
+                products[productName].price
+            ) {
+                // This require statement makes sense only in case if the contract has more than one buyer and seller
+                // require(
+                //     !ERC20Tokens[symbol].isMinted,
+                //     "ERC20 Token for this product has been already minted"
+                // );
 
-            require(
-                products[productName].price * 1 ether == msg.value,
-                "To make a deposit for the product, you need to pay the price of tokens in the Ether, where the rate is 1 to 1"
-            );
+                require(
+                    products[productName].price * 1 ether == msg.value,
+                    "To make a deposit for the product, you need to pay the price of tokens in the Ether, where the rate is 1 to 1"
+                );
+
+                ERC20Tokens[symbol].token.mint(
+                    address(this),
+                    products[productName].price
+                );
+                ERC20Tokens[symbol].isMinted = true;
+            } else {
+                // This require statement makes sense only in case if the contract has more than one buyer and seller
+                // require(
+                //     products[productName].token.balanceOf(msg.sender) >=
+                //         products[productName].price,
+                //     "There are not enough tokens on the balance"
+                // );
+
+                products[productName].token.transferFromERC20(
+                    msg.sender,
+                    address(this),
+                    products[productName].price
+                );
+            }
 
             multiSigWallet.submitTransaction(
                 msg.sender,
@@ -232,12 +249,6 @@ contract Deal {
                 invoices[invoicesCount].transactionIndex
             );
             invoicesCount++;
-
-            ERC20Tokens[symbol].token.mint(
-                address(this),
-                products[productName].price
-            );
-            ERC20Tokens[symbol].isMinted = true;
         }
     }
 
@@ -265,22 +276,19 @@ contract Deal {
             "In order to confirm the product sale, it is necessary to be a seller of the product"
         );
 
+        require(
+            !invoices[invoiceIndex].isConfirmed,
+            "The transaction has been executed already"
+        );
+
         multiSigWallet.confirmTransaction(
             msg.sender,
             invoices[invoiceIndex].transactionIndex
         );
+
         multiSigWallet.executeTransaction(
             msg.sender,
             invoices[invoiceIndex].transactionIndex
-        );
-
-        (, , bool exectued, ) = multiSigWallet.getTransaction(
-            invoices[invoiceIndex].transactionIndex
-        );
-
-        require(
-            exectued,
-            "The transaction is not confirmed by at least two persons yet"
         );
 
         approveTransaction(
@@ -295,16 +303,19 @@ contract Deal {
     }
 
     function makeComplaint(uint256 invoiceIndex, string memory comment) public {
+        require(arbitrator != msg.sender, "Arbitrator can not make complaint");
+
         require(
             invoiceIndex < invoicesCount,
             "There is no invoice for this index"
         );
 
-        require(
-            invoices[invoiceIndex].buyer == msg.sender ||
-                invoices[invoiceIndex].seller == msg.sender,
-            "It is impossible to complain not yours invoice"
-        );
+        // This require statement makes sense only in case if the contract has more than one buyer and seller
+        // require(
+        //     invoices[invoiceIndex].buyer == msg.sender ||
+        //         invoices[invoiceIndex].seller == msg.sender,
+        //     "It is impossible to complain not yours invoice"
+        // );
 
         string memory buyerComment = "";
         string memory sellerComment = "";
@@ -350,8 +361,6 @@ contract Deal {
             "Only unresolved complaints is possible to resolve"
         );
 
-        arbitrator = msg.sender;
-
         Invoice storage invoice = complains[complaintIndex].invoice;
 
         if (products[invoice.productName].isBroken) {
@@ -364,7 +373,7 @@ contract Deal {
                 complains[complaintIndex].invoice.transactionIndex
             );
             approveTransaction(products[invoice.productName], invoice.buyer); // transfer eather from smart contract to the buyer back
-        } 
+        }
 
         complains[complaintIndex].arbitratorComment = comment;
         complains[complaintIndex].isResolved = true;

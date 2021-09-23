@@ -11,7 +11,7 @@ const Deal = artifacts.require("Deal");
  * See docs: https://www.trufflesuite.com/docs/truffle/testing/writing-tests-in-javascript
  */
 
-contract("Deal", function (accounts) {
+contract("Deal", (accounts) => {
   let instance;
   seller = accounts[0];
   buyer = accounts[1];
@@ -26,7 +26,7 @@ contract("Deal", function (accounts) {
   });
 
   describe("Testing of possible functionality", () => {
-    it("buyer should buy a product with Ether", async () => {
+    it("buyer should buy a right product with Ether", async () => {
       // setup
       let beforeInvoicesCount, afterInvoicesCount, productPrice;
       let key = "Skateboard";
@@ -67,7 +67,7 @@ contract("Deal", function (accounts) {
       assert(!beforeInvoiceConfirmation && afterInvoiceConfirmation);
     });
 
-    it("buyer should buy a product with ERC20 Token", async () => {
+    it("buyer should buy a broken product with ERC20 Token", async () => {
       // setup
       let beforeInvoicesCount, afterInvoicesCount, productPrice;
       let key = "Car";
@@ -190,7 +190,7 @@ contract("Deal", function (accounts) {
       expect(_productInfo).to.eql(expectedResult);
     });
 
-    it("arbitrator should resolve a complaint from buyer on a product", async () => {
+    it("arbitrator should resolve a complaint from buyer on a broken product in favor of the buyer", async () => {
       // setup
       let beforeComplainsCount, afterComplainsCount, complains;
       let index = 0;
@@ -383,6 +383,47 @@ contract("Deal", function (accounts) {
       // verify
       expect(_complaint).to.eql(expectedResult);
     });
+
+    it("buyer should buy a right product with ERC20 Token", async () => {
+      // setup
+      let beforeInvoicesCount, afterInvoicesCount, productPrice;
+      let key = "Rollers";
+
+      // exercise
+      beforeInvoicesCount = await instance.invoicesCount();
+      productPrice = await instance
+        .products(key)
+        .then((result) => result.price.toString());
+      await instance.buyProduct(key, {
+        from: buyer,
+        gas: 400000,
+        value: web3.utils.toWei(productPrice),
+      });
+      afterInvoicesCount = await instance.invoicesCount();
+
+      // verify
+      assert(beforeInvoicesCount.toNumber() < afterInvoicesCount.toNumber());
+    });
+
+    it("seller should confirm a product sale with ERC20 Token", async () => {
+      // setup
+      let beforeInvoiceConfirmation, afterInvoiceConfirmation, productPrice;
+      let index = 2;
+
+      // exercise
+      beforeInvoiceConfirmation = await instance
+        .invoices(index)
+        .then((result) => result.isConfirmed);
+      await instance.confirmProductSale(index, {
+        from: seller,
+      });
+      afterInvoiceConfirmation = await instance
+        .invoices(index)
+        .then((result) => result.isConfirmed);
+
+      // verify
+      assert(!beforeInvoiceConfirmation && afterInvoiceConfirmation);
+    });
   });
 
   describe("Testing of unpossible functionality", () => {
@@ -394,8 +435,15 @@ contract("Deal", function (accounts) {
 
         // exercise
         beforeInvoicesCount = await instance.invoicesCount();
+        productPrice = await instance
+          .products(key)
+          .then((result) => result.price.toString());
         try {
-          await instance.buyProduct(key, { from: buyer });
+          await instance.buyProduct(key, {
+            from: buyer,
+            gas: 400000,
+            value: productPrice,
+          });
         } catch (error) {
           // verify
           assert(
@@ -411,18 +459,113 @@ contract("Deal", function (accounts) {
         );
       });
 
+      it("arbitrator tries to buy a product", async () => {
+        // setup
+        let beforeInvoicesCount, afterInvoicesCount;
+        let key = "Bike";
+
+        // exercise
+        beforeInvoicesCount = await instance.invoicesCount();
+        productPrice = await instance
+          .products(key)
+          .then((result) => result.price.toString());
+        try {
+          await instance.buyProduct(key, {
+            from: arbitrator,
+            gas: 400000,
+            value: productPrice,
+          });
+        } catch (error) {
+          // verify
+          assert(error.reason, "Arbitrator can not buy a product");
+        }
+        afterInvoicesCount = await instance.invoicesCount();
+
+        // verify
+        assert(
+          beforeInvoicesCount.toNumber() === afterInvoicesCount.toNumber()
+        );
+      });
+
       it("seller tries to buy his own product", async () => {
+        // setup
+        let beforeInvoicesCount, afterInvoicesCount;
+        let key = "Rollers";
+
+        // exercise
+        beforeInvoicesCount = await instance.invoicesCount();
+        productPrice = await instance
+          .products(key)
+          .then((result) => result.price.toString());
+        try {
+          await instance.buyProduct(key, {
+            from: seller,
+            gas: 400000,
+            value: productPrice,
+          });
+        } catch (error) {
+          // verify
+          assert(error.reason, "Product owner can not buy his own product");
+        }
+        afterInvoicesCount = await instance.invoicesCount();
+
+        // verify
+        assert(
+          beforeInvoicesCount.toNumber() === afterInvoicesCount.toNumber()
+        );
+      });
+
+      it("buyer tries to buy a product with different amount of Ether than the product price", async () => {
         // setup
         let beforeInvoicesCount, afterInvoicesCount;
         let key = "Skateboard";
 
         // exercise
         beforeInvoicesCount = await instance.invoicesCount();
+        productPrice = await instance
+          .products(key)
+          .then((result) => result.price.toString());
         try {
-          await instance.buyProduct(key, { from: seller });
+          await instance.buyProduct(key, {
+            from: buyer,
+            gas: 400000,
+            value: productPrice,
+          });
         } catch (error) {
           // verify
-          assert(error.reason, "The product owner can't buy his own product");
+          assert(
+            error.reason,
+            "The paid amount of Ether is different than the price of the product"
+          );
+        }
+        afterInvoicesCount = await instance.invoicesCount();
+
+        // verify
+        assert(
+          beforeInvoicesCount.toNumber() === afterInvoicesCount.toNumber()
+        );
+      });
+
+      it("buyer tries to buy a product with ERC20 Token with non-sufficient funds", async () => {
+        // setup
+        let beforeInvoicesCount, afterInvoicesCount;
+        let key = "Bike";
+
+        // exercise
+        beforeInvoicesCount = await instance.invoicesCount();
+
+        try {
+          await instance.buyProduct(key, {
+            from: buyer,
+            gas: 400000,
+            value: 0,
+          });
+        } catch (error) {
+          // verify
+          assert(
+            error.reason,
+            "To make a deposit for the product, you need to pay the price of tokens in the Ether, where the rate is 1 to 1"
+          );
         }
         afterInvoicesCount = await instance.invoicesCount();
 
@@ -432,7 +575,244 @@ contract("Deal", function (accounts) {
         );
       });
     });
+
+    describe("Confirm product sale testing", () => {
+      it("buyer tries to confirm product sale", async () => {
+        // setup
+        let beforeInvoiceConfirmation, afterInvoiceConfirmation, productPrice;
+        let index = 3;
+        let key = "Bike";
+
+        // exercise
+        beforeInvoiceConfirmation = await instance
+          .invoices(index)
+          .then((result) => result.isConfirmed);
+        productPrice = await instance
+          .products(key)
+          .then((result) => result.price.toString());
+        try {
+          await instance.buyProduct(key, {
+            from: buyer,
+            gas: 400000,
+            value: web3.utils.toWei(productPrice),
+          });
+          await instance.confirmProductSale(index, {
+            from: buyer,
+          });
+        } catch (error) {
+          // verify
+          assert(
+            error.reason,
+            "In order to confirm the product sale, it is necessary to be a seller of the product"
+          );
+        }
+
+        afterInvoiceConfirmation = await instance
+          .invoices(index)
+          .then((result) => result.isConfirmed);
+
+        // verify
+        assert(!beforeInvoiceConfirmation && !afterInvoiceConfirmation);
+      });
+
+      it("seller tries to confirm already confirmed product sale", async () => {
+        // setup
+        let beforeInvoiceConfirmation, afterInvoiceConfirmation, productPrice;
+        let index = 2;
+
+        // exercise
+        beforeInvoiceConfirmation = await instance
+          .invoices(index)
+          .then((result) => result.isConfirmed);
+        try {
+          await instance.confirmProductSale(index, {
+            from: seller,
+          });
+        } catch (error) {
+          // verify
+          assert(error.reason, "The transaction has been executed already");
+        }
+
+        afterInvoiceConfirmation = await instance
+          .invoices(index)
+          .then((result) => result.isConfirmed);
+
+        // verify
+        assert(beforeInvoiceConfirmation && afterInvoiceConfirmation);
+      });
+    });
+
+    describe("Make complaint testing", () => {
+      it("arbitrator tries to make a complaint on a product", async () => {
+        // setup
+        let beforeComplainsCount, afterComplainsCount;
+        let index = 0;
+
+        // exercise
+        beforeComplainsCount = await instance.complainsCount();
+
+        try {
+          await instance.makeComplaint(index, "The product is broken", {
+            from: arbitrator,
+          });
+        } catch (error) {
+          // verify
+          assert(error.reason, "Arbitrator can not make complaint");
+        }
+
+        afterComplainsCount = await instance.complainsCount();
+
+        // verify
+        assert(
+          beforeComplainsCount.toNumber() === afterComplainsCount.toNumber()
+        );
+      });
+
+      it("buyer tries to make a complaint with a non-existent index of invoice", async () => {
+        // setup
+        let beforeComplainsCount, afterComplainsCount;
+        let index = 5;
+
+        // exercise
+        beforeComplainsCount = await instance.complainsCount();
+
+        try {
+          await instance.makeComplaint(index, "The product is broken", {
+            from: buyer,
+          });
+        } catch (error) {
+          // verify
+          assert(error.reason, "There is no invoice for this index");
+        }
+
+        afterComplainsCount = await instance.complainsCount();
+
+        // verify
+        assert(
+          beforeComplainsCount.toNumber() === afterComplainsCount.toNumber()
+        );
+      });
+    });
+
+    describe("Resolve complaint testing", () => {
+      it("arbitrator tries to resolve a complaint with a non-existent index", async () => {
+        // setup
+        let beforeComplainsCount, afterComplainsCount;
+        let index = 5;
+
+        // exercise
+        beforeComplainsCount = await instance.complainsCount();
+
+        try {
+          await instance.resolveComplaint(
+            index,
+            "Product is broken, refund issued",
+            {
+              from: arbitrator,
+            }
+          );
+        } catch (error) {
+          // verify
+          assert(error.reason, "There is no complaint for this index");
+        }
+
+        afterComplainsCount = await instance.complainsCount();
+
+        // verify
+        assert(
+          beforeComplainsCount.toNumber() === afterComplainsCount.toNumber()
+        );
+      });
+
+      it("buyer tries to resolve a complaint", async () => {
+        // setup
+        let beforeComplainsCount, afterComplainsCount;
+        let index = 0;
+
+        // exercise
+        beforeComplainsCount = await instance.complainsCount();
+
+        try {
+          await instance.resolveComplaint(
+            index,
+            "Product is broken, refund issued",
+            {
+              from: buyer,
+            }
+          );
+        } catch (error) {
+          // verify
+          assert(error.reason, "Buyer can not resolve complaints");
+        }
+
+        afterComplainsCount = await instance.complainsCount();
+
+        // verify
+        assert(
+          beforeComplainsCount.toNumber() === afterComplainsCount.toNumber()
+        );
+      });
+
+      it("seller tries to resolve a complaint", async () => {
+        // setup
+        let beforeComplainsCount, afterComplainsCount;
+        let index = 0;
+
+        // exercise
+        beforeComplainsCount = await instance.complainsCount();
+
+        try {
+          await instance.resolveComplaint(
+            index,
+            "Seller can not resolve complaints",
+            {
+              from: seller,
+            }
+          );
+        } catch (error) {
+          // verify
+          assert(error.reason, "There is no complaint for this index");
+        }
+
+        afterComplainsCount = await instance.complainsCount();
+
+        // verify
+        assert(
+          beforeComplainsCount.toNumber() === afterComplainsCount.toNumber()
+        );
+      });
+
+      it("arbitrator tries to resolve already resolved complaint", async () => {
+        // setup
+        let beforeComplainsCount, afterComplainsCount;
+        let index = 0;
+
+        // exercise
+        beforeComplainsCount = await instance.complainsCount();
+
+        try {
+          await instance.resolveComplaint(
+            index,
+            "Product is broken, refund issued",
+            {
+              from: arbitrator,
+            }
+          );
+        } catch (error) {
+          // verify
+          assert(
+            error.reason,
+            "Only unresolved complaints is possible to resolve"
+          );
+        }
+
+        afterComplainsCount = await instance.complainsCount();
+
+        // verify
+        assert(
+          beforeComplainsCount.toNumber() === afterComplainsCount.toNumber()
+        );
+      });
+    });
   });
-  // await Deal.deployed();
-  // return assert.isTrue(true);
 });
