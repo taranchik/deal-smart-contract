@@ -9,11 +9,11 @@ import "./MultiSigWallet.sol";
 contract Deal {
     MultiSigWallet private multiSigWallet;
     address private arbitrator;
-    mapping(uint256 => Complaint) private complains;
-    mapping(uint256 => Invoice) private invoices;
+    mapping(uint256 => Complaint) public complains;
+    mapping(uint256 => Invoice) public invoices;
     mapping(string => Product) public products;
-    mapping(string => ERC20Token) private ERC20Tokens;
-    uint256 private complainsCount = 0;
+    mapping(string => ERC20Token) public ERC20Tokens;
+    uint256 public complainsCount = 0;
     uint256 public invoicesCount = 0;
 
     constructor(address[] memory _owners) {
@@ -136,7 +136,7 @@ contract Deal {
     {
         return (
             products[name].price,
-            products[name].token.name(),
+            products[name].token.symbol(),
             products[name].isBroken,
             products[name].productOwner
         );
@@ -326,11 +326,10 @@ contract Deal {
         complainsCount++;
     }
 
-    function resolveComplaint(
-        uint256 complaintIndex,
-        string memory comment,
-        bool acceptPayment
-    ) public payable {
+    function resolveComplaint(uint256 complaintIndex, string memory comment)
+        public
+        payable
+    {
         require(
             complaintIndex < complainsCount,
             "There is no complaint for this index"
@@ -355,7 +354,7 @@ contract Deal {
 
         Invoice storage invoice = complains[complaintIndex].invoice;
 
-        if (acceptPayment) {
+        if (products[invoice.productName].isBroken) {
             multiSigWallet.confirmTransaction(
                 msg.sender,
                 complains[complaintIndex].invoice.transactionIndex
@@ -364,10 +363,8 @@ contract Deal {
                 msg.sender,
                 complains[complaintIndex].invoice.transactionIndex
             );
-            approveTransaction(products[invoice.productName], invoice.seller); // transfer eather from smart contract to the seller
-        } else {
-            approveTransaction(products[invoice.productName], invoice.buyer); // transfer eather from smart contract to the buyer
-        }
+            approveTransaction(products[invoice.productName], invoice.buyer); // transfer eather from smart contract to the buyer back
+        } 
 
         complains[complaintIndex].arbitratorComment = comment;
         complains[complaintIndex].isResolved = true;
