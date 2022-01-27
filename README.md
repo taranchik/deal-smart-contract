@@ -28,7 +28,7 @@ Deal smart contract is:
 Source files contains: implementation in the solidity programming language, automatic tests with the ability to generate a coverage report, commissioning documentation.
 
 
-[Back To The Top](#bank-smart-contract-mocha/chai-tests)
+[Back To The Top](#deal-smart-contract)
 
 ---
 
@@ -84,7 +84,7 @@ truffle migrate
 truffle test
 ```
 
-[Back To The Top](#bank-smart-contract-mocha/chai-tests)
+[Back To The Top](#deal-smart-contract)
 
 ---
 
@@ -95,4 +95,4 @@ truffle test
 - GitLab - [@taranchik](https://gitlab.com/taranchik)
 - Twitter - [@viataranushenko](https://twitter.com/viataranushenko)
 
-[Back To The Top](#bank-smart-contract-mocha/chai-tests)
+[Back To The Top](#deal-smart-contract)
